@@ -16,7 +16,7 @@ from bert_model import BERTEncoder, FeatureComparator
 from bert_dataset import WCSTBertDataset, COLOR_BASE, SHAPE_BASE, NUMBER_BASE
 
 try:
-    from wcst import WCST
+    from wcst_wisconsin import WCST
 except Exception:
     WCST = None
 
