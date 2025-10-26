@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 
 try:
-    from wcst import WCST
+    from wcst_simulator import WCST
 except Exception:
     WCST = None
 
