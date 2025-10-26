@@ -16,7 +16,7 @@ from bert_model import BERTEncoder, FeatureComparator
 from bert_dataset import WCSTBertDataset, COLOR_BASE, SHAPE_BASE, NUMBER_BASE
 
 try:
-    from wcst import WCST
+    from wcst_simulator import WCST
 except Exception:
     WCST = None
 
@@ -326,9 +326,11 @@ if __name__ == '__main__':
                         except Exception:
                             closs = None
 
+                    tl_str = f"C{true_label+1}" if true_label is not None else "None"
+                    pl_str = f"C{pred_cat+1}"
                     print('Decoded trial (first sample):', decoded)
                     print('Feature for Classification: ', full_ds.w.category_feature)
-                    print('True label:', true_label, 'Predicted label:', pred_cat, 'Class loss:', closs)
+                    print(f'True label: {tl_str} Predicted label: {pl_str} Class loss: {closs}')
                 except Exception as e:
                     print('Could not fetch/run trial from WCST generator:', e)
         except Exception:
