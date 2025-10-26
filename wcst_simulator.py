@@ -2,7 +2,7 @@ import numpy as np
 
 class WCST:
     
-    def __init__(self, batch_size, switch_prob=0.1):
+    def __init__(self, batch_size, switch_prob=0.7):
         self.colours = ['red','blue','green','yellow']
         self.shapes = ['circle','square','star','cross']
         self.quantities = ['1','2','3','4']
