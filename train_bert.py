@@ -16,7 +16,7 @@ from bert_model import BERTEncoder, FeatureComparator
 from bert_dataset import WCSTBertDataset, COLOR_BASE, SHAPE_BASE, NUMBER_BASE
 
 try:
-    from wcst_simulator import WCST
+    from wcst import WCST
 except Exception:
     WCST = None
 
@@ -140,6 +140,90 @@ def compute_roc_auc(loader, encoder, comparator, device):
     except Exception:
         return None
 
+
+def analyze_interpretability(loader, encoder, comparator, device, max_batches=20, out_prefix='/home/olik/NLP/Project_NLP/interpret'):
+    """Analyze attention maps to find heads that attend from query subtokens to correct card feature subtokens.
+
+    For each feature f (0=color,1=shape,2=number) compute average attention weight per (layer,head)
+    from pos_q = 4*3 + f to pos_c = 3*label + f across up to max_batches batches.
+    Save per-feature head score arrays and print top heads.
+    """
+    encoder.eval()
+    comparator.eval()
+    acc = {f: None for f in range(3)}
+    total_examples = 0
+    try:
+        for b_ix, (x, y, m, feat, lbl) in enumerate(loader):
+            if b_ix >= max_batches:
+                break
+            x = x.to(device)
+            m = m.to(device)
+            # request attention maps and hidden states
+            with torch.no_grad():
+                out = encoder(x, attention_mask=m, return_attn=True, return_hidden=True)
+                # when return_attn and return_hidden both True, encoder returns (logits, attn_maps, hidden)
+                if isinstance(out, tuple) and len(out) == 3:
+                    logits, attn_maps, hidden = out
+                else:
+                    # unexpected return, fallback
+                    continue
+
+                B = x.size(0)
+                n_layers = len(attn_maps)
+                n_heads = attn_maps[0].size(1)
+                # init accumulators
+                for f in range(3):
+                    if acc[f] is None:
+                        acc[f] = [np.zeros((n_heads,), dtype=float) for _ in range(n_layers)]
+
+                lbl_np = lbl.detach().cpu().numpy()
+                for i in range(B):
+                    lab = int(lbl_np[i])
+                    for f in range(3):
+                        pos_q = 4 * 3 + f
+                        pos_c = 3 * lab + f
+                        for L in range(n_layers):
+                            # attn_maps[L]: (B, n_heads, T, T)
+                            a = attn_maps[L][i].detach().cpu().numpy()
+                            w = a[:, pos_q, pos_c]  # (n_heads,)
+                            acc[f][L] += w
+                total_examples += B
+
+        if total_examples == 0:
+            print('No examples processed for interpretability.')
+            return None
+
+        # average and stack
+        head_scores = {}
+        for f in range(3):
+            arr = np.stack([acc[f][L] / float(total_examples) for L in range(len(acc[f]))], axis=0)
+            head_scores[f] = arr  # (n_layers, n_heads)
+            np.save(f'{out_prefix}_head_scores_feat{f}.npy', arr)
+
+        # print top heads per feature
+        print('\nInterpretability: top attention heads attending to correct card feature subtokens')
+        for f in range(3):
+            arr = head_scores[f]
+            n_layers, n_heads = arr.shape
+            flat = arr.flatten()
+            idxs = np.argsort(-flat)
+            print(f'Feature {f} top heads:')
+            for r in range(min(8, len(flat))):
+                idx = idxs[r]
+                L = idx // n_heads
+                H = idx % n_heads
+                print(f'  Rank {r+1}: Layer {L} Head {H} score={arr[L,H]:.4f}')
+
+        # save summary
+        try:
+            np.savez(f'{out_prefix}_summary.npz', **{f'feat{f}': head_scores[f] for f in head_scores})
+        except Exception:
+            pass
+        return head_scores
+    except Exception as e:
+        print('analyze_interpretability failed:', e)
+        return None
+
     encoder.eval()
     comparator.eval()
     y_trues = []
@@ -181,6 +265,14 @@ if __name__ == '__main__':
     train_idx = indices[:n_train]
     val_idx = indices[n_train: n_train + n_val]
     test_idx = indices[n_train + n_val:]
+
+    # Sanity checks to prevent data leakage between splits
+    # (ensure indices are disjoint and sums match)
+    assert len(train_idx) + len(val_idx) + len(test_idx) == n, "Split sizes do not add up to dataset size"
+    assert len(set(train_idx) & set(val_idx)) == 0, "Train/Val overlap detected"
+    assert len(set(train_idx) & set(test_idx)) == 0, "Train/Test overlap detected"
+    assert len(set(val_idx) & set(test_idx)) == 0, "Val/Test overlap detected"
+    print(f'Dataset split sizes -> train: {len(train_idx)}, val: {len(val_idx)}, test: {len(test_idx)}')
 
     from torch.utils.data import Subset
     train_ds = Subset(full_ds, train_idx)
@@ -412,37 +504,38 @@ if __name__ == '__main__':
     plt.savefig(out_path)
     print(f"Saved training plots to: {out_path}")
 
-# save metrics summary (losses and category accuracies) and final test accuracy
-metrics = {
-    'history': history,
-    'final_test': {
-        'test_loss': float(test_loss),
-        'test_lm_acc': float(test_lm_acc),
-        'test_feat_acc': float(test_feat_acc),
-        'test_cat_acc': float(test_cat_acc)
+if __name__ == '__main__':
+    # save metrics summary (losses and category accuracies) and final test accuracy
+    metrics = {
+        'history': history,
+        'final_test': {
+            'test_loss': float(test_loss),
+            'test_lm_acc': float(test_lm_acc),
+            'test_feat_acc': float(test_feat_acc),
+            'test_cat_acc': float(test_cat_acc)
+        }
     }
-}
-try:
-    with open('/home/olik/NLP/Project_NLP/metrics.json', 'w') as f:
-        # also compute test confusion macro-F1 and include in metrics
-        try:
-            conft = test_conf_cat.numpy()
-            tp_t = conft.diagonal().astype(float)
-            pred_sum_t = conft.sum(axis=0).astype(float)
-            true_sum_t = conft.sum(axis=1).astype(float)
-            with np.errstate(divide='ignore', invalid='ignore'):
-                prec_t = np.where(pred_sum_t > 0, tp_t / pred_sum_t, 0.0)
-                rec_t = np.where(true_sum_t > 0, tp_t / true_sum_t, 0.0)
-                f1_t = np.where((prec_t + rec_t) > 0, 2 * prec_t * rec_t / (prec_t + rec_t), 0.0)
-            metrics['final_test']['test_conf_macro_f1'] = float(np.nanmean(f1_t))
-            metrics['final_test']['test_conf_per_class_f1'] = f1_t.tolist()
-        except Exception:
-            metrics['final_test']['test_conf_macro_f1'] = None
-            metrics['final_test']['test_conf_per_class_f1'] = None
-        json.dump(metrics, f, indent=2)
-    print('Saved metrics summary to /home/olik/NLP/Project_NLP/metrics.json')
-except Exception:
-    pass
+    try:
+        with open('/home/olik/NLP/Project_NLP/metrics.json', 'w') as f:
+            # also compute test confusion macro-F1 and include in metrics
+            try:
+                conft = test_conf_cat.numpy()
+                tp_t = conft.diagonal().astype(float)
+                pred_sum_t = conft.sum(axis=0).astype(float)
+                true_sum_t = conft.sum(axis=1).astype(float)
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    prec_t = np.where(pred_sum_t > 0, tp_t / pred_sum_t, 0.0)
+                    rec_t = np.where(true_sum_t > 0, tp_t / true_sum_t, 0.0)
+                    f1_t = np.where((prec_t + rec_t) > 0, 2 * prec_t * rec_t / (prec_t + rec_t), 0.0)
+                metrics['final_test']['test_conf_macro_f1'] = float(np.nanmean(f1_t))
+                metrics['final_test']['test_conf_per_class_f1'] = f1_t.tolist()
+            except Exception:
+                metrics['final_test']['test_conf_macro_f1'] = None
+                metrics['final_test']['test_conf_per_class_f1'] = None
+            json.dump(metrics, f, indent=2)
+        print('Saved metrics summary to /home/olik/NLP/Project_NLP/metrics.json')
+    except Exception:
+        pass
 
     # print the last 3 validation confusion matrices (category) and their macro-F1s
     try:
@@ -480,3 +573,13 @@ except Exception:
             print('ROC-AUC: sklearn not available or computation failed (skipped)')
     except Exception:
         print('ROC-AUC computation failed')
+
+    # Run interpretability analysis on a small number of test batches and print top heads
+    try:
+        print('\nRunning interpretability analysis (test set, max_batches=20)')
+        head_scores = analyze_interpretability(test_loader, encoder, comparator, device, max_batches=20)
+        if head_scores is not None:
+            for f in head_scores:
+                print(f'Head scores saved for feature {f} -> /home/olik/NLP/Project_NLP/interpret_head_scores_feat{f}.npy')
+    except Exception as e:
+        print('Interpretability analysis run failed:', e)
