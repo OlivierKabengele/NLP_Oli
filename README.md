@@ -1,7 +1,7 @@
 # ENCODER-ONLY MODEL  ( wisconsin-card-sorting-test)
 NB: 
 PLEASE remember to adjust this PATH address “/home/olik/NLP/Project_NLP/” 
-BEFORE Running “Train_Evaluate_Test.py” and “run_interpret.py”
+before running “Train_Evaluate_Test.py” and “run_interpret.py”
 
 1)	TRAIN_Evaluate_Test.py            # Main script for training and running evaluation)
 				    # included Confusion Matrix, ROC, etc
