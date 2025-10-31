@@ -1,0 +1,98 @@
+[
+  {
+    "cards": [
+      71,
+      78,
+      81,
+      74,
+      78,
+      80,
+      72,
+      77,
+      79,
+      73,
+      77,
+      70
+    ],
+    "true_cat": 0,
+    "pred_cat": 1,
+    "true_feat": 2,
+    "pred_feat": 0
+  },
+  {
+    "cards": [
+      [
+        "green",
+        "circle",
+        "1"
+      ],
+      [
+        "red",
+        "star",
+        "3"
+      ],
+      [
+        "yellow",
+        "cross",
+        "4"
+      ],
+      [
+        "blue",
+        "star",
+        "2"
+      ]
+    ],
+    "true_cat": 2,
+    "pred_cat": 0,
+    "true_feat": 0,
+    "pred_feat": 2
+  },
+  {
+    "cards": [
+      74,
+      78,
+      79,
+      73,
+      77,
+      82,
+      71,
+      77,
+      81,
+      72,
+      76,
+      70
+    ],
+    "true_cat": 2,
+    "pred_cat": 0,
+    "true_feat": 0,
+    "pred_feat": 2
+  },
+  {
+    "cards": [
+      [
+        "green",
+        "circle",
+        "3"
+      ],
+      [
+        "yellow",
+        "star",
+        "4"
+      ],
+      [
+        "yellow",
+        "cross",
+        "3"
+      ],
+      [
+        "yellow",
+        "square",
+        "4"
+      ]
+    ],
+    "true_cat": 0,
+    "pred_cat": 3,
+    "true_feat": 1,
+    "pred_feat": 1
+  }
+]
